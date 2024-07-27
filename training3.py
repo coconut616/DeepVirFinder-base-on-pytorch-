@@ -7,7 +7,7 @@ import model  # 确认导入正确的模型模块
 
 class EncodedDataset(Dataset):
     def __init__(self, tensor_dir):
-        self.tensor_dir = tensor_dir
+        self.tensor_dir = self.tensor_dir = tensor_dir
         self.file_names = [f for f in os.listdir(tensor_dir) if f.endswith('_fwd_tensor.pt')]
 
     def __len__(self):
@@ -70,6 +70,9 @@ def main():
     # 训练模型
     num_epochs = 10  # 初步选择一个较小的值
     best_valid_loss = float('inf')
+    early_stopping_patience = 2  # 如果验证损失在2个epoch内没有改善，就提前停止
+    epochs_no_improve = 0
+    min_delta = 1e-5  # 定义最小变化量，防止浮点误差
 
     for epoch in range(num_epochs):
         model_instance.train()
@@ -93,9 +96,9 @@ def main():
 
             running_loss += loss.item()
 
-            if (i + 1) % 100 == 0:
-                print(f'Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {running_loss / 100:.4f}')
-                running_loss = 0.0
+        # 输出每个epoch的训练损失
+        avg_train_loss = running_loss / len(train_loader)
+        print(f'Epoch [{epoch+1}/{num_epochs}], Training Loss: {avg_train_loss:.4f}')
 
         # 在每个epoch结束时进行验证
         model_instance.eval()
@@ -113,13 +116,20 @@ def main():
                 loss = criterion(outputs, labels)
                 valid_loss += loss.item()
 
-        valid_loss /= len(valid_loader)
-        print(f'Epoch [{epoch+1}/{num_epochs}], Validation Loss: {valid_loss:.4f}')
+        avg_valid_loss = valid_loss / len(valid_loader)
+        print(f'Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_valid_loss:.4f}')
 
-        # 保存最佳模型
-        if valid_loss < best_valid_loss:
-            best_valid_loss = valid_loss
+        # 检查验证损失是否改善
+        if avg_valid_loss < best_valid_loss - min_delta:
+            best_valid_loss = avg_valid_loss
+            epochs_no_improve = 0
             torch.save(model_instance.state_dict(), 'D:\\pythonProjectLibrary\\DeepVirFinderPytorch\\models\\best_model.pth')
+        else:
+            epochs_no_improve += 1
+
+        if epochs_no_improve >= early_stopping_patience:
+            print('Early stopping triggered.')
+            break
 
     print('Finished Training')
 
